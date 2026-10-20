@@ -1,24 +1,7 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// Disallow bare format!/write!/println! macros in release/WASM builds; test
+// code is excluded so diagnostics remain unrestricted.
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
@@ -52,7 +35,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, ArbitrationError, DisputeStatus};
 
 use interfaces::governable::Governable;
 
