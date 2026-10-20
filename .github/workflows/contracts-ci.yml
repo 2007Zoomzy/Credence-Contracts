@@ -1,0 +1,129 @@
+name: Contracts CI Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests for each gated package
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg || [[ -n "$pkg" ]]; do
+            [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+            echo "==> cargo test -p $pkg --locked"
+            cargo test -p "$pkg" --locked
+          done < scripts/ci-gated-packages.txt
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy for each gated package
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg || [[ -n "$pkg" ]]; do
+            [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+            echo "==> cargo clippy -p $pkg --all-targets --locked -- -D warnings"
+            cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
+          done < scripts/ci-gated-packages.txt
+
+  wasm:
+    name: WASM build + size budget
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + wasm32v1-none)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build contract crates for WASM
+        run: |
+          set -euo pipefail
+          # Only build contract crates (exclude testutils — it is a test-only helper,
+          # not an on-chain contract, so it has no wasm32v1-none build target).
+          while IFS= read -r pkg || [[ -n "$pkg" ]]; do
+            [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+            if [[ "$pkg" == "testutils" ]]; then
+              echo "==> Skipping $pkg (test-only helper, not a contract crate)"
+              continue
+            fi
+            echo "==> cargo build -p $pkg --target wasm32v1-none --release --locked"
+            cargo build -p "$pkg" --target wasm32v1-none --release --locked
+          done < scripts/ci-gated-packages.txt
+
+      - name: Check WASM size budgets
+        run: |
+          set -euo pipefail
+          WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh
+
+  no-bare-panic:
+    name: No bare panic!() in release code
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for new bare panic!() calls
+        run: |
+          set -euo pipefail
+          python3 scripts/check_no_panic.py

@@ -479,7 +479,7 @@ fn test_cancel_with_reason_and_role() {
     assert_eq!(d.cancellation_reason, reason);
     assert_eq!(
         d.cancelled_by_role,
-        Some(soroban_sdk::Symbol::short("creator"))
+        Some(soroban_sdk::Symbol::new(&s.env, "creator"))
     );
 }
 
@@ -494,7 +494,7 @@ fn test_cancel_admin_role() {
     assert_eq!(d.status, DisputeStatus::Cancelled);
     assert_eq!(
         d.cancelled_by_role,
-        Some(soroban_sdk::Symbol::short("admin"))
+        Some(soroban_sdk::Symbol::new(&s.env, "admin"))
     );
 }
 

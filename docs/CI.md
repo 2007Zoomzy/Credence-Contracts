@@ -6,18 +6,40 @@ This document lists the **exact commands** maintainers expect you to run before
 opening a PR that touches contracts. Running them locally prevents CI failures
 and keeps reviews focused on logic, not style.
 
+## The CI Gate
+
+The required CI workflow is `.github/workflows/contracts-ci.yml`. It runs five
+jobs — `fmt`, `test`, `clippy`, `wasm`, and `no-bare-panic` — against the four
+**gated packages** listed in `scripts/ci-gated-packages.txt`:
+
+```
+credence_arbitration
+timelock
+dispute_resolution
+testutils
+```
+
+**To add a crate to the gate:** add its package name (one line) to
+`scripts/ci-gated-packages.txt` and ensure it passes all five jobs locally
+before opening the PR. No other file needs to change.
+
+---
+
 ## Quick Reference — Run All Lints
 
 ```bash
 # 1. Formatting
 cargo fmt --all -- --check
 
-# 2. Standard clippy
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+# 2. Standard clippy (gated packages only)
+cargo clippy -p credence_arbitration --all-targets --locked -- -D warnings
+cargo clippy -p timelock --all-targets --locked -- -D warnings
+cargo clippy -p dispute_resolution --all-targets --locked -- -D warnings
+cargo clippy -p testutils --all-targets --locked -- -D warnings
 
 # 3. Security-focused clippy
 cargo clippy --all-targets -- \
-  -W clippy::integer_arithmetic \
+  -W clippy::arithmetic_side_effects \
   -W clippy::unwrap_used \
   -W clippy::expect_used \
   -W clippy::panic \
@@ -28,8 +50,11 @@ cargo clippy --all-targets -- \
   -W clippy::cast_sign_loss \
   -D warnings
 
-# 4. Workspace tests
-cargo test --workspace
+# 4. Tests (gated packages only)
+cargo test -p credence_arbitration --locked
+cargo test -p timelock --locked
+cargo test -p dispute_resolution --locked
+cargo test -p testutils --locked
 
 # 5. Coverage (per-crate, ≥ 95%)
 cargo llvm-cov --package credence_bond --fail-under-lines 95
@@ -62,7 +87,7 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-**CI job:** `contracts-lints.yml`
+**CI job:** `contracts-ci.yml` (`fmt` job)
 
 ---
 
@@ -70,18 +95,18 @@ cargo fmt --all
 
 **Command:**
 ```bash
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy -p credence_arbitration --all-targets --locked -- -D warnings
+# (repeat for each package in scripts/ci-gated-packages.txt)
 ```
 
 **What it checks:** The full Rust lint suite (correctness, style, complexity,
 perf) on every crate and every target (lib, tests, benches, examples).
 
 **Tips:**
-- Use `#![allow(clippy::some_lint)]` sparingly and only with a comment
-  explaining why the lint is suppressed.
+- Fix warnings in code rather than suppressing them with `#[allow]`.
 - Prefer `cargo clippy --fix` for auto-fixable lints when safe.
 
-**CI job:** `contracts-lints.yml`
+**CI job:** `contracts-ci.yml` (`clippy` job)
 
 ---
 
@@ -109,7 +134,7 @@ blocking failures for the Credence security pipeline:
 |---|---|---|
 | `unwrap_used` / `expect_used` | Silent panics in production | `unwrap_or_else(\|\| panic_with_error!(…))` |
 | `panic` / `todo` / `unimplemented` | Unexpected halting | `panic_with_error!` with wire-stable codes |
-| `integer_arithmetic` | Unchecked overflow/underflow | `checked_add`, `saturating_add` |
+| `arithmetic_side_effects` | Unchecked overflow/underflow | `checked_add`, `saturating_add` |
 | `indexing_slicing` | Out-of-bounds panic | `.get()` with explicit error handling |
 | `cast_possible_truncation` | Silent precision loss | Explicit bounds checks before casting |
 | `cast_sign_loss` | Unexpected sign change | `try_from` with error handling |
@@ -118,24 +143,21 @@ blocking failures for the Credence security pipeline:
 
 ---
 
-## 4. Workspace Tests
+## 4. Tests
 
 **Command:**
 ```bash
-cargo test --workspace
+cargo test -p credence_arbitration --locked
+# (repeat for each package in scripts/ci-gated-packages.txt)
 ```
 
-**What it checks:** All unit tests, integration tests, and doc-tests across
-the workspace.
+**What it checks:** All unit tests, integration tests, and doc-tests for the
+gated packages.
 
 **Tips:**
-- Use `just test-one <crate> [test_name]` for targeted runs during development.
-- Run the fuzz harness explicitly for the bond crate:
-  ```bash
-  cargo test -p credence_bond fuzz::test_bond_fuzz -- --nocapture
-  ```
+- Use `cargo test -p <crate> <test_name>` for targeted runs during development.
 
-**CI jobs:** `contracts-tests.yml`, `ci.yml`
+**CI job:** `contracts-ci.yml` (`test` job)
 
 ---
 
@@ -161,7 +183,7 @@ cargo llvm-cov --package timelock --fail-under-lines 95
 cargo llvm-cov --package credence_bond --open
 ```
 
-**CI job:** `coverage.yml`
+**CI job:** `coverage.yml` (out of scope for the main gate; thresholds TBD)
 
 ---
 

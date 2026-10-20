@@ -90,8 +90,9 @@ jobs:
 
       - name: Run Clippy with security lints
         run: |
-          cargo clippy --all-targets --message-format=json -- \
-            -W clippy::integer_arithmetic \
+          set -euo pipefail
+          cargo clippy --all-targets -- \
+            -W clippy::arithmetic_side_effects \
             -W clippy::unwrap_used \
             -W clippy::expect_used \
             -W clippy::panic \
@@ -101,7 +102,7 @@ jobs:
             -W clippy::cast_possible_truncation \
             -W clippy::cast_sign_loss \
             -D warnings \
-            2>&1 | tee clippy-output.json
+            2>&1 | tee clippy-output.json; exit "${PIPESTATUS[0]}"
 
       - name: Parse Clippy results
         if: always()

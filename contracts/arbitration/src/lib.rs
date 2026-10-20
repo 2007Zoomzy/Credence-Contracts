@@ -1,24 +1,7 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// cargo build --release / WASM build is the only mode where this deny fires
+// (tests stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
@@ -26,33 +9,11 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
 };
 
-/// Signature domain identifier for the CredenceArbitration contract.
-///
-/// This constant binds signatures to this specific contract, preventing
-/// cross-contract replay attacks where a signature intended for one contract
-/// could be replayed against another. Each contract in the Credence system
-/// has a unique signature domain constant.
-///
-/// # Security
-///
-/// Without domain separation, a signature created for contract A could be
-/// replayed against contract B if both contracts share the same nonce namespace
-/// and signature verification logic. By including this domain in the signed
-/// payload hash, we ensure signatures are only valid for their intended contract.
-///
-/// # Value
-///
-/// The domain is a human-readable string that uniquely identifies this contract
-/// within the Credence system. It should be included in the signed payload hash
-/// along with other payload fields (nonce, deadline, etc.).
-#[allow(dead_code)]
-const SIGNATURE_DOMAIN: &str = "CredenceArbitration";
-
 pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, ArbitrationError, DisputeStatus};
 
 use interfaces::governable::Governable;
 
@@ -338,14 +299,14 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::NotInitialized)?;
 
         let role = if caller == dispute.creator {
-            Symbol::short("creator")
+            Symbol::new(&e, "creator")
         } else if caller == admin {
-            Symbol::short("admin")
+            Symbol::new(&e, "admin")
         } else {
             return Err(ArbitrationError::NotAuthorized);
         };
 
-        let from = dispute.status.clone();
+        let from = dispute.status;
         require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
@@ -457,7 +418,7 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
         // Must be Voting to start resolution
-        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
+        require_transition(dispute.status, DisputeStatus::Resolving)?;
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {
